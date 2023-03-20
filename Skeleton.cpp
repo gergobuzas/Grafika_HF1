@@ -42,7 +42,7 @@ const char * const vertexSource = R"(
 	layout(location = 0) in vec2 vp;	// Varying input: vp = vertex position is expected in attrib array 0
 
 	void main() {
-		gl_Position = vec4(vp.x, vp.y, 0, 10);		// transform vp from modeling space to normalized device space
+		gl_Position = vec4(vp.x, vp.y, 0, 5);		// transform vp from modeling space to normalized device space
         //float w = sqrt(vp.x * vp.x + vp.y * vp.y + 1);
         //gl_Position = vec4((vp.x) / w, (vp.y) / w, 0, 1);		// transform vp from modeling space to normalized device
     }
@@ -194,7 +194,7 @@ struct Hami{
         delete mouth;
         goo.push_back(vec2(center.x, center.y));
         //Moving forward in the hyperbolic space
-        center = center * coshf((float)time / 10000.0f) + vec2(0, -0.5) * sinhf((float)time / 10000.0f);
+        center = center * coshf((float)time / 100000.0f) + vec2(0, -0.05) * sinhf((float)time / 100000.0f);
         create(vec2(this->center.x, center.y), this->R, this->color);
         glutPostRedisplay();
     }
@@ -235,7 +235,7 @@ Hami* hami2;
 void onInitialization() {
     glViewport(0, 0, windowWidth, windowHeight);
     hami1 = new Hami(vec2(0, 0), 0.15f, vec3(1, 0, 0));
-    hami2 = new Hami(vec2(3.0f, 0), 0.08f, vec3(0, 1, 0));
+    hami2 = new Hami(vec2(0.3f, 0), 0.08f, vec3(0, 1, 0));
     // create program for the GPU
     gpuProgram.create(vertexSource, fragmentSource, "outColor");
 }
