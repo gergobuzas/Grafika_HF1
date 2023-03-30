@@ -37,14 +37,11 @@
 const char * const vertexSource = R"(
 	#version 330				// Shader 3.3
 	precision highp float;		// normal floats, makes no difference on desktop computers
-
 	uniform mat4 MVP;			// uniform variable, the Model-View-Projection transformation matrix
-	layout(location = 0) in vec2 vp;	// Varying input: vp = vertex position is expected in attrib array 0
-
+	layout(location = 0) in vec4 vp;	// Varying input: vp = vertex position is expected in attrib array 0
 	void main() {
-		gl_Position = vec4(vp.x, vp.y, 0, 5);		// transform vp from modeling space to normalized device space
-        //float w = sqrt(vp.x * vp.x + vp.y * vp.y + 1);
-        //gl_Position = vec4((vp.x) / w, (vp.y) / w, 0, 1);		// transform vp from modeling space to normalized device
+        gl_Position = vec4((vp.x) / (vp.w+1), (vp.y) / (vp.w+1), 0, 1);		// transform vp from modeling space to normalized device
+        //gl_Position = vec4(vp.x, vp.y, 0, 1);		// transform vp from modeling space to normalized device
     }
 )";
 
@@ -52,10 +49,8 @@ const char * const vertexSource = R"(
 const char * const fragmentSource = R"(
 	#version 330			// Shader 3.3
 	precision highp float;	// normal floats, makes no difference on desktop computers
-
 	uniform vec3 color;		// uniform variable, the color of the primitive
 	out vec4 outColor;		// computed color of the current pixel
-
 	void main() {
 		outColor = vec4(color, 1);	// computed color is the color of the primitive
 	}
@@ -66,59 +61,148 @@ GPUProgram gpuProgram; // vertex and fragment shaders
 
 unsigned int vao;	   // virtual world on the GPU
 float s = -1; // 1: Euclidean; -1: Minkowski == hyperbolic
-float Hdot(vec4 a, vec4 b) { // affects length and normalize
+//Skalaris szorzat
+float doth(vec4 a, vec4 b) {
     return a.x * b.x + a.y * b.y + a.z * b.z + s * a.w * b.w;
 }
-float Hlength(vec4 v) { return sqrtf(dot(v, v)); }
-vec4 Hnormalize(vec4 v) { return v * 1/Hlength(v); }
-vec4 Hlerp(vec4 p, vec4 q, float t) { return p * (1-t) + q * t; }
-vec4 Hslerp(vec4 p, vec4 q, float t) {
+//Megadja a hosszat
+float lengthh(vec4 v) {
+    return sqrtf(doth(v, v));
+}
+//Egyseghosszuva teszi
+vec4 normalizeh(vec4 v) {
+    return v * 1 / lengthh(v);
+}
+
+vec4 lerph(vec4 p, vec4 q, float t) {
+    return p * (1 - t) + q * t;
+}
+
+vec4 slerph(vec4 p, vec4 q, float t) {
     float d = acos(dot(p, q)); // distance
     return p * (sin((1-t) * d) / sin(d)) + q * (sin(t * d) / sin(d));
 }
 
+float distanceh(vec4 p, vec4 q) {
+    return acosh(-dot(p, q));
+}
 
-vec4 Hhlerp(vec4 p, vec4 q, float t) {
-    float d = acosh(-dot(p, q)); // distance
+vec4 hlerph(vec4 p, vec4 q, float t) {
+    float d = distanceh(p, q); // distance
     return p * (sinh((1-t) * d) / sinh(d)) + q * (sinh(t * d) / sinh(d));
 }
 
-//Taken from: http://cg.iit.bme.hu/portal/sites/default/files/oktatott%20t%C3%A1rgyak/sz%C3%A1m%C3%ADt%C3%B3g%C3%A9pes%20grafika/2d%20k%C3%A9pszint%C3%A9zis/grafika2d.pdf
+vec4 transformToEuclidean(vec4 p) {
+    return vec4(p.x / (p.w), p.y / (p.w), 0, 1);
+}
+
+vec4 transformToHyperbolic(vec4 p) {
+    vec4 newP = p / sqrtf( 1 - powf(p.x, 2) - powf(p.y, 2));
+    return newP;
+}
+
+
+
+// ---------------------------------------------------------------------------------------------
+
+//pontok p*p=-1
+bool isPoint(vec4 p) {
+    return doth(p,p) == -1;
+}
+
+//vektor a p pontban p*v=0
+bool isVector(vec4 p, vec4 v) {
+    return doth(p, v) == 0;
+}
+
+//Egyenes, egységsebességű mozgás, r(t)=p*cosh(t)+v*sinh(t), ahol v a kezdősebesség és p a kezdőpont
+vec4 calculatePosition(vec4 p, vec4 v, float t){
+    return p * coshf(t) + v * sinhf(t);
+}
+
+vec4 calculateVelocity(vec4 p, vec4 v, float t){
+    return p * sinhf(t) + v * coshf(t);
+}
+
+//Elfordítás, egységvektorok
+vec4 calculateRotation(vec4 p, vec4 v, float t){
+    return normalizeh(p * coshf(t) + v * sinhf(t));
+}
+
+//Merőleges
+vec4 calculatePerpendicular(vec4 p, vec4 v, float t){
+    return normalizeh(p * coshf(t) - v * sinhf(t));
+}
+bool isPerpendicular(vec4 v1, vec4 v2){ //   v * v = 0   és   v * p = 0
+    return doth(v1, v2) == 0;
+}
+
+//Centrális pont visszavetítése
+vec4 calculateReflection(vec4 p, vec4 v, float t){
+    return normalizeh(p * coshf(t) - v * sinhf(t));
+}
+
+//Forgatás
+vec4 rotate(vec4 v, float phi, vec4 axis) {
+    // Calculate the perpendicular component of v
+    vec4 v_perp = v - axis * (doth(v, axis) / doth(axis, axis));
+
+    // Calculate the rotated vector
+    vec4 result = v * cosh(phi) + v_perp * sinh(phi);
+
+    return result;
+}
+
+
+
+
+
 struct Circle {
     unsigned int vao, vbo;
-    std::vector<vec2> points;
+    std::vector<vec4> points;
     vec3 color;    // color
-    vec2 center;  // center
+    vec4 center;  // center
     float R; 	   // radius
 
-    Circle(vec2 _center, float _R, vec3 _color) {
+    Circle(vec4 _center, float _R, vec3 _color) {
         glGenVertexArrays(1, &vao);
         glBindVertexArray(vao);
         glGenBuffers(1, &vbo);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         center = _center; R = _R; color = _color;
 
+       // float A2 = pow(_center.x, 2) + pow(_center.y, 2);
+
+        //center = sqrtf(A2) / ( pow(cosh(R), 2) + (1-A2) + A2) ;
+
+
         //create points
-        points.push_back(vec2(center.x, center.y));
+        points.push_back(vec4(center.x, center.y, 0, 1));
         for (int i = 0; i < 360; i++) {
-            points.push_back(vec2(sin(i) * R + center.x, cos(i) * R + center.y));
+/*            float fi = (2.0f * i * M_PI) / 100;
+            float x = cosf(fi);
+            float y = sinf(fi);
+            float w = sqrt(pow(x, 2)+pow(y, 2)+1);
+            vec4* p = new vec4(cosf(fi) / (w+1), sinf(fi) / (w+1), 0, 1);*/
+
+            float x = sin(i)* R + center.x;
+            float y = cos(i)*R + center.y;
+            float w = sqrt(pow(x, 2)+pow(y, 2)+1);
+            vec4* p = new vec4(x / (w + 1), y / (w + 1), 0, 1);
+            points.push_back(*p);
         }
     }
 
     void draw(){
         glBindVertexArray(vao);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(vec2), &points[0], GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(vec4), &points[0], GL_DYNAMIC_DRAW);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
         glUniform3f(glGetUniformLocation(gpuProgram.getId(), "color"), color.x, color.y, color.z);
         glDrawArrays(GL_TRIANGLE_FAN, 0, points.size());
     }
 
-    bool In(vec2 r) {
-        vec2 newR = r - center;
-        return (dot(newR, newR) - R * R < 0);
-    }
 
     ~Circle(){
         glDeleteBuffers(1, &vbo);
@@ -135,17 +219,17 @@ struct Hami{
     Circle* eye2center;
     Circle* mouth;
     Circle* body;
-    vec2 center;
+    vec4 center;
     float R;
     float mouthR;
     vec3 color;
-    std::vector<vec2> goo;
+    std::vector<vec4> goo;
     bool mouthSmaller;
     bool moveforward;
     bool turnleft;
     bool turnright;
 
-    Hami(vec2 _center, float _R, vec3 _color){
+    Hami(vec4 _center, float _R, vec3 _color){
         glGenVertexArrays(1, &vao);
         glBindVertexArray(vao);
         glGenBuffers(1, &vbo);
@@ -161,13 +245,13 @@ struct Hami{
         create(center, R, color);
     }
 
-    void create(vec2 _center, float _R, vec3 _color){
+    void create(vec4 _center, float _R, vec3 _color){
         body = new Circle(_center, _R, _color);
-        eye1= new Circle(vec2(_center.x - _R / 2, _center.y + _R * 0.85f), _R / 4, vec3(1, 1, 1));
-        eye2 = new Circle(vec2(_center.x + _R / 2, _center.y + _R * 0.85f), _R / 4, vec3(1, 1, 1));
-        eye1center = new Circle(vec2(_center.x - _R / 2, _center.y + _R), _R / 8, vec3(0, 0, 0));
-        eye2center = new Circle(vec2(_center.x + _R / 2, _center.y + _R), _R / 8, vec3(0, 0, 0));
-        mouth = new Circle(vec2(_center.x, _center.y + _R), mouthR, vec3(0, 0, 0));
+        eye1= new Circle(vec4(_center.x - _R / 2, _center.y + _R * 0.85f, 0, 1), _R / 4, vec3(1, 1, 1));
+        eye2 = new Circle(vec4(_center.x + _R / 2, _center.y + _R * 0.85f, 0, 1), _R / 4, vec3(1, 1, 1));
+        eye1center = new Circle(vec4(_center.x - _R / 2, _center.y + _R, 0, 1), _R / 8, vec3(0, 0, 0));
+        eye2center = new Circle(vec4(_center.x + _R / 2, _center.y + _R, 0, 1), _R / 8, vec3(0, 0, 0));
+        mouth = new Circle(vec4(_center.x, _center.y + _R, 0, 1), mouthR, vec3(0, 0, 0));
     }
 
     void draw(){
@@ -192,17 +276,17 @@ struct Hami{
         delete eye2;
         delete eye2center;
         delete mouth;
-        goo.push_back(vec2(center.x, center.y));
+        goo.push_back(vec4(center.x, center.y, 0, 1));
         //Moving forward in the hyperbolic space
-        center = center * coshf((float)time / 100000.0f) + vec2(0, -0.05) * sinhf((float)time / 100000.0f);
-        create(vec2(this->center.x, center.y), this->R, this->color);
+        center = center * coshf((float)time / 100000.0f) + vec4(0, -0.05f, 0, 1) * sinhf((float)time / 100000.0f);
+        create(vec4(this->center.x, center.y, 0, 1), this->R, this->color);
         glutPostRedisplay();
     }
 
     void drawGoo(){
         glBindVertexArray(vao);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, goo.size() * sizeof(vec2), &goo[0], GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, goo.size() * sizeof(vec4), &goo[0], GL_DYNAMIC_DRAW);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
         glUniform3f(glGetUniformLocation(gpuProgram.getId(), "color"), 1, 1, 1);
@@ -234,8 +318,8 @@ Hami* hami2;
 // Initialization, create an OpenGL context
 void onInitialization() {
     glViewport(0, 0, windowWidth, windowHeight);
-    hami1 = new Hami(vec2(0, 0), 0.15f, vec3(1, 0, 0));
-    hami2 = new Hami(vec2(0.3f, 0), 0.08f, vec3(0, 1, 0));
+    hami1 = new Hami(vec4(0, 0, 0, 1), 0.15f, vec3(1, 0, 0));
+    hami2 = new Hami(vec4(0.3f, 0, 0, 1), 0.08f, vec3(0, 1, 0));
     // create program for the GPU
     gpuProgram.create(vertexSource, fragmentSource, "outColor");
 }
@@ -263,35 +347,18 @@ void onKeyboardUp(unsigned char key, int pX, int pY) {
 
 // Move mouse with key pressed
 void onMouseMotion(int pX, int pY) {	// pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
-    // Convert to normalized device space
-    float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-    float cY = 1.0f - 2.0f * pY / windowHeight;
-    printf("Mouse moved to (%3.2f, %3.2f)\n", cX, cY);
+
 }
 
 // Mouse click event
 void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
-    // Convert to normalized device space
-    float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-    float cY = 1.0f - 2.0f * pY / windowHeight;
 
-    char * buttonStat;
-    switch (state) {
-        case GLUT_DOWN: buttonStat = "pressed"; break;
-        case GLUT_UP:   buttonStat = "released"; break;
-    }
-
-    switch (button) {
-        case GLUT_LEFT_BUTTON:   printf("Left button %s at (%3.2f, %3.2f)\n", buttonStat, cX, cY);   break;
-        case GLUT_MIDDLE_BUTTON: printf("Middle button %s at (%3.2f, %3.2f)\n", buttonStat, cX, cY); break;
-        case GLUT_RIGHT_BUTTON:  printf("Right button %s at (%3.2f, %3.2f)\n", buttonStat, cX, cY);  break;
-    }
 }
 
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
     long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
     //call the hami animation function here
-    hami1->animate(time);
-    hami2->animate(time);
+    //hami1->animate(time);
+    //hami2->animate(time);
 }
