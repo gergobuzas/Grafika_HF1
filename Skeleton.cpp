@@ -73,89 +73,62 @@ float lengthh(vec4 v) {
 vec4 normalizeh(vec4 v) {
     return v * 1 / lengthh(v);
 }
-
 vec4 lerph(vec4 p, vec4 q, float t) {
     return p * (1 - t) + q * t;
 }
-
 vec4 slerph(vec4 p, vec4 q, float t) {
     float d = acos(dot(p, q)); // distance
     return p * (sin((1-t) * d) / sin(d)) + q * (sin(t * d) / sin(d));
 }
-
 float distanceh(vec4 p, vec4 q) {
     return acosh(-dot(p, q));
 }
-
 vec4 hlerph(vec4 p, vec4 q, float t) {
     float d = distanceh(p, q); // distance
     return p * (sinh((1-t) * d) / sinh(d)) + q * (sinh(t * d) / sinh(d));
 }
-
-vec4 transformToEuclidean(vec4 p) {
-    return vec4(p.x / (p.w), p.y / (p.w), 0, 1);
-}
-
-vec4 transformToHyperbolic(vec4 p) {
-    vec4 newP = p / sqrtf( 1 - powf(p.x, 2) - powf(p.y, 2));
-    return newP;
-}
-
-
-
 // ---------------------------------------------------------------------------------------------
-
 //pontok p*p=-1
 bool isPoint(vec4 p) {
     return doth(p,p) == -1;
 }
-
 //vektor a p pontban p*v=0
 bool isVector(vec4 p, vec4 v) {
     return doth(p, v) == 0;
 }
-
-//Egyenes, egységsebességű mozgás, r(t)=p*cosh(t)+v*sinh(t), ahol v a kezdősebesség és p a kezdőpont
-vec4 calculatePosition(vec4 p, vec4 v, float t){
-    return p * coshf(t) + v * sinhf(t);
-}
-
-vec4 calculateVelocity(vec4 p, vec4 v, float t){
-    return p * sinhf(t) + v * coshf(t);
-}
-
-//Elfordítás, egységvektorok
-vec4 calculateRotation(vec4 p, vec4 v, float t){
-    return normalizeh(p * coshf(t) + v * sinhf(t));
-}
-
-//Merőleges
-vec4 calculatePerpendicular(vec4 p, vec4 v, float t){
-    return normalizeh(p * coshf(t) - v * sinhf(t));
-}
 bool isPerpendicular(vec4 v1, vec4 v2){ //   v * v = 0   és   v * p = 0
     return doth(v1, v2) == 0;
 }
-
-//Centrális pont visszavetítése
-vec4 calculateReflection(vec4 p, vec4 v, float t){
-    return normalizeh(p * coshf(t) - v * sinhf(t));
+//create a perpendicular vector ------- 1. Egy irányra merőleges irány állítása.
+vec4 perpendicularVector(vec4 p, vec4 v) {
+    p.z = -p.z;
+    float nx = p.y * v.z - p.z * v.y;
+    float ny = p.z * v.x - p.x * v.z;
+    float nw = p.x * v.y - p.y * v.x;
+    return vec4(nx, ny, 0, nw);
 }
-
-//Forgatás
-vec4 rotate(vec4 v, float phi, vec4 axis) {
-    // Calculate the perpendicular component of v
-    vec4 v_perp = v - axis * (doth(v, axis) / doth(axis, axis));
-
-    // Calculate the rotated vector
-    vec4 result = v * cosh(phi) + v_perp * sinh(phi);
-
-    return result;
+//Egy 𝒒 pont iránya és távolsága: 𝒒 = 𝒑 cosh 𝑡 + 𝒗0 sinh 𝑡  -------- 2. Adott pontból és sebesség vektorral induló pont helyének és sebesség vektorának számítása t idővel később.
+vec4 pointAtTime(vec4 p, vec4 v, float t) {
+    return p * cosh(t) + v * sinh(t); //returns p
 }
-
-
-
-
+//3. Egy ponthoz képest egy másik pont irányának és távolságának meghatározása.
+vec4 directionAndDistance(vec4 p, vec4 q) { //returns v
+    return normalizeh(q - p);
+}
+//4. Egy ponthoz képest adott irányban és távolságra lévő pont előállítása.  float distanceh(vec4 p, vec4 q) { return acosh(-dot(p, q)); }
+vec4 pointAtDirectionAndDistance(vec4 p, vec4 v) {  //here we use the returned p and vs
+    float d = distanceh(p, v);
+    return p + v * d;
+}
+//5. Egy pontban egy vektor elforgatása adott szöggel. ----- Elfordítás (egységvektorok): 𝒗∗= 𝒗 cos 𝜑 + 𝒗⊥sin(𝜑)
+vec4 rotateVector(vec4 v, float angle) {
+    vec4 vPerp = perpendicularVector(v, vec4(0, 0, 1, 0));
+    return v * cos(angle) + vPerp * sin(angle);
+}
+//6. Egy közelítő pont és sebességvektorhoz a geometria szabályait teljesítő, közeli pont és sebesség választása.
+vec4 closestPoint(vec4 p, vec4 v) {
+    return p * cosh(1) + v * sinh(1);
+}
 
 struct Circle {
     unsigned int vao, vbo;
@@ -170,12 +143,6 @@ struct Circle {
         glGenBuffers(1, &vbo);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         center = _center; R = _R; color = _color;
-
-       // float A2 = pow(_center.x, 2) + pow(_center.y, 2);
-
-        //center = sqrtf(A2) / ( pow(cosh(R), 2) + (1-A2) + A2) ;
-
-
         //create points
         points.push_back(vec4(center.x, center.y, 0, 1));
         for (int i = 0; i < 360; i++) {
@@ -192,7 +159,6 @@ struct Circle {
             points.push_back(*p);
         }
     }
-
     void draw(){
         glBindVertexArray(vao);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -202,14 +168,11 @@ struct Circle {
         glUniform3f(glGetUniformLocation(gpuProgram.getId(), "color"), color.x, color.y, color.z);
         glDrawArrays(GL_TRIANGLE_FAN, 0, points.size());
     }
-
-
     ~Circle(){
         glDeleteBuffers(1, &vbo);
         glDeleteVertexArrays(1, &vao);
     }
 };
-
 
 struct Hami{
     unsigned int vao, vbo;
