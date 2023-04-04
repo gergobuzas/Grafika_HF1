@@ -41,7 +41,6 @@ const char * const vertexSource = R"(
 	layout(location = 0) in vec4 vp;	// Varying input: vp = vertex position is expected in attrib array 0
 	void main() {
         gl_Position = vec4((vp.x) / (vp.w+1), (vp.y) / (vp.w+1), 0, 1);		// transform vp from modeling space to normalized device
-        //gl_Position = vec4(vp.x, vp.y, 0, 1);		// transform vp from modeling space to normalized device
     }
 )";
 
@@ -171,6 +170,7 @@ struct Hami{
     Circle* eye2center;
     Circle* mouth;
     Circle* body;
+    Hami* otherHami = nullptr;
     vec4 center;
     float R;
     float mouthR;
@@ -197,16 +197,28 @@ struct Hami{
         this->turnright = false;
         this->direction = vec4(0, 1, 0, (0*center.x + 1*center.y) / center.w);
         this->direction = normalizeh(direction);
-        create(center, R, color);
+        create(center, R, color, otherHami);
     }
 
-    void create(vec4 _center, float _R, vec3 _color){
+    void create(vec4 _center, float _R, vec3 _color, Hami* _otherHami){
         body = new Circle(vec2(_center.x, _center.y), _R, _color);
         direction = normalizeh(direction);
         eye1= new Circle(pointAtTime(_center, normalizeh(rotateVector(center,direction, -0.55f)), _R), _R / 4, vec3(1, 1, 1));
         eye2= new Circle(pointAtTime(_center, normalizeh(rotateVector(center,direction, 0.55f)), _R), _R / 4, vec3(1, 1, 1));
-        eye1center = new Circle(pointAtTime(eye1->center, rotateVector(eye1->center, eye2->center, -0.1f), _R), _R / 8, vec3(0, 0, 1));
-        eye2center = new Circle(pointAtTime(eye2->center, rotateVector(eye2->center, eye1->center, 0.1f), _R), _R / 8, vec3(0, 0, 1));
+        if (otherHami == nullptr){
+            eye1center = new Circle(pointAtTime(eye1->center, rotateVector(eye1->center, vec4(0, 0, 0, 1), -0.2f), _R / 4), _R / 8, vec3(0, 0, 1));
+            eye2center = new Circle(pointAtTime(eye2->center, rotateVector(eye2->center, vec4(0, 0, 0, 1), 0.2f), _R / 4), _R / 8, vec3(0, 0, 1));
+        } else {
+            vec4 newV = -1.0f * ( (eye1->center * coshf(0.1f) - otherHami->eye1->center) / sinhf(0.1f) );
+            newV = normalizeh(newV);
+            vec4 newCenter = pointAtTime(eye1->center, newV, _R / 8);
+            eye1center = new Circle(newCenter, _R / 8, vec3(0, 0, 1));
+
+            newV = -1.0f * ( (eye2->center * coshf(0.1f) - otherHami->eye2->center) / sinhf(0.1f) );
+            newV = normalizeh(newV);
+            newCenter = pointAtTime(eye2->center, newV, _R / 8);
+            eye2center = new Circle(newCenter, _R / 8, vec3(0, 0, 1));
+        }
         mouth = new Circle(pointAtTime(_center, direction, _R), mouthR, vec3(0, 0, 0));
     }
 
@@ -234,33 +246,29 @@ struct Hami{
         if (this->turnleft){
             direction = rotateVector(body->center, direction, 0.01f);
             direction = normalizeh(direction);
-            //printf("%f %f %f %f\n\n", direction.x, direction.y, direction.z, direction.w);
         }
         if (this->turnright){
             direction = rotateVector(body->center, direction, -0.01f);
             direction = normalizeh(direction);
-            //printf("%f %f %f %f\n\n", direction.x, direction.y, direction.z, direction.w);
         }
         if (this->moveforward){
             center = pointAtTime(center, direction, time * 0.001f);
             direction = velocityAtTime(center, direction, time * 0.001f);
             direction = doth(center,direction) * center + direction;
             direction = normalizeh(direction);
-            //center.w = sqrtf(center.x * center.x + center.y * center.y + 1.0f);
-            //printf("%f %f %f %f\n\n", center.x, center.y, center.z, center.w);
         }
         goo.push_back(vec4(center.x, center.y, 0, sqrtf(center.x * center.x + center.y * center.y + 1.0f)));
         mouthSizeChange();
-        create(center, R, color);
+        create(center, R, color, otherHami);
         glutPostRedisplay();
     }
 
     void animateCircle(long time){
         delete body;
         delete eye1;
-        //delete eye1center;
+        delete eye1center;
         delete eye2;
-        //delete eye2center;
+        delete eye2center;
         delete mouth;
 
             center = pointAtTime(center, direction, 0.005f);
@@ -271,11 +279,10 @@ struct Hami{
             direction = normalizeh(direction);
             direction = rotateVector(center, direction, M_PI / 330.0f);
             //center.w = sqrtf(center.x * center.x + center.y * center.y + 1.0f);
-            //printf("%f %f %f %f\n\n", center.x, center.y, center.z, center.w);
 
         goo.push_back(vec4(center.x, center.y, 0, sqrtf(center.x * center.x + center.y * center.y + 1.0f)));
         mouthSizeChange();
-        create(center, R, color);
+        create(center, R, color, otherHami);
         glutPostRedisplay();
     }
 
@@ -316,6 +323,8 @@ void onInitialization() {
     glViewport(0, 0, windowWidth, windowHeight);
     hami1 = new Hami(vec2(0, 0), 0.3f, vec3(1, 0, 0));
     hami2 = new Hami(vec2(0.6f, 0.3f), 0.3f, vec3(0, 1, 0));
+    hami1->otherHami = hami2;
+    hami2->otherHami = hami1;
     PoincareDisk = new Circle(vec2(0, 0), 5.4f, vec3(0, 0, 0));
     // create program for the GPU
     gpuProgram.create(vertexSource, fragmentSource, "outColor");
