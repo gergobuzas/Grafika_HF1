@@ -57,8 +57,6 @@ const char * const fragmentSource = R"(
 
 
 GPUProgram gpuProgram; // vertex and fragment shaders
-
-unsigned int vao;	   // virtual world on the GPU
 float s = -1; // 1: Euclidean; -1: Minkowski == hyperbolic
 float doth(vec4 a, vec4 b) {
     return a.x * b.x + a.y * b.y + a.z * b.z + s * a.w * b.w;
@@ -71,19 +69,8 @@ vec4 normalizeh(vec4 v) {
     vec4 newV =  v * lengthV;
     return newV;
 }
-vec4 lerph(vec4 p, vec4 q, float t) {
-    return p * (1 - t) + q * t;
-}
-vec4 slerph(vec4 p, vec4 q, float t) {
-    float d = acos(dot(p, q)); // distance
-    return p * (sin((1-t) * d) / sin(d)) + q * (sin(t * d) / sin(d));
-}
 float distanceh(vec4 p, vec4 q) {
     return acosh(-doth(p, q));
-}
-vec4 hlerph(vec4 p, vec4 q, float t) {
-    float d = distanceh(p, q); // distance
-    return p * (sinh((1-t) * d) / sinh(d)) + q * (sinh(t * d) / sinh(d));
 }
 // ---------------------------------------------------------------------------------------------
 vec4 perpendicularVector(vec4 p, vec4 v) {
@@ -93,10 +80,10 @@ vec4 perpendicularVector(vec4 p, vec4 v) {
     return vec4(returnedVec3.x, returnedVec3.y, 0, returnedVec3.z);
 }
 vec4 pointAtTime(vec4 p, vec4 v, float t) {
-    return p * coshf(t) + v * sinhf(t); //returns p
+    return p * coshf(t) + v * sinhf(t);
 }
 vec4 velocityAtTime(vec4 p, vec4 v, float t) {
-    return p * sinh(t) + v * cosh(t); //returns v
+    return p * sinh(t) + v * cosh(t);
 }
 vec4 rotateVector(vec4 p, vec4 v, float angle) {
     vec4 vPerp = normalizeh(perpendicularVector(p, v));
@@ -107,10 +94,10 @@ vec4 rotateVector(vec4 p, vec4 v, float angle) {
 struct Circle {
     unsigned int vao, vbo;
     std::vector<vec4> points;
-    vec3 color;    // color
-    vec4 center;  // center
-    vec4 direction; // direction
-    float R; 	   // radius
+    vec3 color;
+    vec4 center;
+    vec4 direction;
+    float R;
 
     Circle(vec2 _center, float _R, vec3 _color) {
         glGenVertexArrays(1, &vao);
@@ -135,16 +122,10 @@ struct Circle {
 
     void create() {
         points.clear();
-        vec4 v = direction;
-        v = normalizeh(v);
-        vec4 vectorNext = v;
-        vec4 pointOnCircleEdge;
-        for (size_t i = 0; i <= 1000; i++)
-        {
-            pointOnCircleEdge = pointAtTime(center, vectorNext, R);
-            points.push_back(pointOnCircleEdge);
-            vectorNext = rotateVector(center, vectorNext, (2.0f * M_PI / 1000.0f) * i);
-            vectorNext = normalizeh(vectorNext);
+        vec4 vector = normalizeh(direction);
+        for (int i = 0; i <= 1000; i++) {
+            points.push_back(pointAtTime(center, vector, R));
+            vector = normalizeh(rotateVector(center, vector, (2.0f * M_PI / 1000.0f) * i));
         }
     }
     void draw(){
@@ -210,11 +191,13 @@ struct Hami{
             eye2center = new Circle(pointAtTime(eye2->center, rotateVector(eye2->center, vec4(0, 0, 0, 1), 0.2f), _R / 4), _R / 8, vec3(0, 0, 1));
         } else {
             vec4 newV = -1.0f * ( (eye1->center * coshf(0.1f) - otherHami->eye1->center) / sinhf(0.1f) );
+            newV = doth(eye1->center,newV) * eye1->center + newV;
             newV = normalizeh(newV);
             vec4 newCenter = pointAtTime(eye1->center, newV, _R / 8);
             eye1center = new Circle(newCenter, _R / 8, vec3(0, 0, 1));
 
             newV = -1.0f * ( (eye2->center * coshf(0.1f) - otherHami->eye2->center) / sinhf(0.1f) );
+            newV = doth(eye2->center,newV) * eye2->center + newV;
             newV = normalizeh(newV);
             newCenter = pointAtTime(eye2->center, newV, _R / 8);
             eye2center = new Circle(newCenter, _R / 8, vec3(0, 0, 1));
@@ -271,14 +254,12 @@ struct Hami{
         delete eye2center;
         delete mouth;
 
-            center = pointAtTime(center, direction, 0.005f);
-            center.w = sqrtf(center.x * center.x + center.y * center.y + 1.0f);
-            direction = velocityAtTime(center, direction, 0.005f);
-            //direction.w = sqrtf(center.x * direction.x + center.y * direction.y);
-            direction = doth(center,direction) * center + direction;
-            direction = normalizeh(direction);
-            direction = rotateVector(center, direction, M_PI / 330.0f);
-            //center.w = sqrtf(center.x * center.x + center.y * center.y + 1.0f);
+        center = pointAtTime(center, direction, 0.005f);
+        center.w = sqrtf(center.x * center.x + center.y * center.y + 1.0f);
+        direction = velocityAtTime(center, direction, 0.005f);
+        direction = doth(center,direction) * center + direction;
+        direction = normalizeh(direction);
+        direction = rotateVector(center, direction, M_PI / 330.0f);
 
         goo.push_back(vec4(center.x, center.y, 0, sqrtf(center.x * center.x + center.y * center.y + 1.0f)));
         mouthSizeChange();
@@ -371,7 +352,7 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 long prevTime = 0;
 long difference;
 void onIdle() {
-    long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
+    long time = glutGet(GLUT_ELAPSED_TIME);
     difference = time - prevTime;
     hami1->animate(difference);
     hami2->animateCircle(difference);
