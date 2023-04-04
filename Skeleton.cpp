@@ -405,17 +405,9 @@ long prevTime = 0;
 long difference;
 void onIdle() {
     long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
-    /*if (time-prevTime > 0){
-        difference = time - prevTime;
-    }
-    printf("%ld\n\n", difference);
-    for (int i = 0; i < difference; ++i) {
-        hami1->animate(difference);
-        hami2->animateCircle(difference);
-    }
-//    prevTime = time;*/
-    hami1->animate(time-prevTime);
-    hami2->animateCircle(time-prevTime);
+    difference = time - prevTime;
+    hami1->animate(difference);
+    hami2->animateCircle(difference);
     glutPostRedisplay();
     prevTime = time;
 }
