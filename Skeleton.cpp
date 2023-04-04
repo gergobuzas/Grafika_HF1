@@ -126,6 +126,7 @@ struct Circle {
         for (int i = 0; i <= 1000; i++) {
             points.push_back(pointAtTime(center, vector, R));
             vector = normalizeh(rotateVector(center, vector, (2.0f * M_PI / 1000.0f) * i));
+            vector = doth(center ,vector) * center + vector;
         }
     }
     void draw(){
@@ -216,7 +217,6 @@ struct Hami{
         eye1center->draw();
         eye2->draw();
         eye2center->draw();
-
     }
 
     void animate(long time){
@@ -253,15 +253,15 @@ struct Hami{
         delete eye2;
         delete eye2center;
         delete mouth;
-
-        center = pointAtTime(center, direction, 0.005f);
-        center.w = sqrtf(center.x * center.x + center.y * center.y + 1.0f);
-        direction = velocityAtTime(center, direction, 0.005f);
-        direction = doth(center,direction) * center + direction;
-        direction = normalizeh(direction);
-        direction = rotateVector(center, direction, M_PI / 330.0f);
-
-        goo.push_back(vec4(center.x, center.y, 0, sqrtf(center.x * center.x + center.y * center.y + 1.0f)));
+        for (int i = 0; i < time; ++i) {
+            center = pointAtTime(center, direction,  0.001f);
+            center.w = sqrtf(center.x * center.x + center.y * center.y + 1.0f);
+            direction = velocityAtTime(center, direction,  0.001f);
+            direction = doth(center,direction) * center + direction;
+            direction = normalizeh(direction);
+            direction = rotateVector(center, direction,  M_PI / 1000.0f);
+            goo.push_back(vec4(center.x, center.y, 0, sqrtf(center.x * center.x + center.y * center.y + 1.0f)));
+        }
         mouthSizeChange();
         create(center, R, color, otherHami);
         glutPostRedisplay();
