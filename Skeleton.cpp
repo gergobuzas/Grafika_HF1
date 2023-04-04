@@ -61,15 +61,12 @@ GPUProgram gpuProgram; // vertex and fragment shaders
 
 unsigned int vao;	   // virtual world on the GPU
 float s = -1; // 1: Euclidean; -1: Minkowski == hyperbolic
-//Skalaris szorzat
 float doth(vec4 a, vec4 b) {
     return a.x * b.x + a.y * b.y + a.z * b.z + s * a.w * b.w;
 }
-//Megadja a hosszat
 float lengthh(vec4 v) {
     return sqrtf(doth(v, v));
 }
-//Egyseghosszuva teszi
 vec4 normalizeh(vec4 v) {
     float lengthV = 1.0f /  lengthh(v);
     vec4 newV =  v * lengthV;
@@ -90,57 +87,22 @@ vec4 hlerph(vec4 p, vec4 q, float t) {
     return p * (sinh((1-t) * d) / sinh(d)) + q * (sinh(t * d) / sinh(d));
 }
 // ---------------------------------------------------------------------------------------------
-//pontok p*p=-1
-bool isPoint(vec4 p) {
-    return doth(p,p) == -1;
-}
-//vektor a p pontban p*v=0
-bool isVector(vec4 p, vec4 v) {
-    return doth(p, v) == 0;
-}
-bool isPerpendicular(vec4 v1, vec4 v2){ //   v * v = 0   és   v * p = 0
-    return doth(v1, v2) == 0;
-}
-//create a perpendicular vector ------- 1. Egy irányra merőleges irány állítása.
 vec4 perpendicularVector(vec4 p, vec4 v) {
     vec3 newp = vec3(p.x, p.y, -p.w);
     vec3 newv = vec3(v.x, v.y, -v.w);
     vec3 returnedVec3 = cross(newp, newv);
     return vec4(returnedVec3.x, returnedVec3.y, 0, returnedVec3.z);
 }
-
-//Egy 𝒒 pont iránya és távolsága: 𝒒 = 𝒑 cosh 𝑡 + 𝒗0 sinh 𝑡  -------- 2. Adott pontból és sebesség vektorral induló pont helyének és sebesség vektorának számítása t idővel később.
 vec4 pointAtTime(vec4 p, vec4 v, float t) {
     return p * coshf(t) + v * sinhf(t); //returns p
 }
-//Lépés 𝑡 távolságra ---- Iranyvektort ad, a pointAtTime derivaltja
 vec4 velocityAtTime(vec4 p, vec4 v, float t) {
     return p * sinh(t) + v * cosh(t); //returns v
 }
-
-//3. Egy ponthoz képest egy másik pont irányának és távolságá
-//   Egy olyan vektor kell, amivel p*v=0;
-/*
-vec4 directionAndDistance(vec4 p, vec4 q) {
-    return p * cosh(distanceh(p, q)) + q * sinh(distanceh(p, q));
-}*/
-
-//4. Egy ponthoz képest adott irányban és távolságra lévő pont előállítása.  float distanceh(vec4 p, vec4 q) { return acosh(-dot(p, q)); }
-/*vec4 pointAtDirectionAndDistance(vec4 p, vec4 v) {  //here we use the returned p and vs
-    float d = distanceh(p, v);
-    vec4 newp = (pointAtTime(p, normalizeh(v), d));
-    printf("newp: %f, %f, %f, %f", newp.x, newp.y, newp.z, newp.w);
-    return newp;
-}*/
-//5. Egy pontban egy vektor elforgatása adott szöggel. ----- Elfordítás (egységvektorok): 𝒗∗= 𝒗 cos 𝜑 + 𝒗⊥sin(𝜑)
 vec4 rotateVector(vec4 p, vec4 v, float angle) {
     vec4 vPerp = normalizeh(perpendicularVector(p, v));
     return v * cosf(angle) + vPerp * sinf(angle);
 }
-//6. Egy közelítő pont és sebességvektorhoz a geometria szabályait teljesítő, közeli pont és sebesség választása.
-/*vec4 closestPoint(vec4 p, vec4 v) {
-    return p * coshf(1) + v * sinhf(1);
-}*/
 
 
 struct Circle {
@@ -243,8 +205,8 @@ struct Hami{
         direction = normalizeh(direction);
         eye1= new Circle(pointAtTime(_center, normalizeh(rotateVector(center,direction, -0.55f)), _R), _R / 4, vec3(1, 1, 1));
         eye2= new Circle(pointAtTime(_center, normalizeh(rotateVector(center,direction, 0.55f)), _R), _R / 4, vec3(1, 1, 1));
-        //eye1center = new Circle(pointAtTime(_center, rotateVector(_center, direction, -0.2f), _R), _R / 8, vec3(0, 0, 0));
-        //eye2center = new Circle(pointAtTime(_center, rotateVector(_center, direction, 0.2f), _R), _R / 8, vec3(0, 0, 0));
+        eye1center = new Circle(pointAtTime(eye1->center, rotateVector(eye1->center, eye2->center, -0.1f), _R), _R / 8, vec3(0, 0, 1));
+        eye2center = new Circle(pointAtTime(eye2->center, rotateVector(eye2->center, eye1->center, 0.1f), _R), _R / 8, vec3(0, 0, 1));
         mouth = new Circle(pointAtTime(_center, direction, _R), mouthR, vec3(0, 0, 0));
     }
 
@@ -256,18 +218,18 @@ struct Hami{
         body->draw();
         mouth->draw();
         eye1->draw();
-        //eye1center->draw();
+        eye1center->draw();
         eye2->draw();
-        //eye2center->draw();
+        eye2center->draw();
 
     }
 
     void animate(long time){
         delete body;
         delete eye1;
-        //delete eye1center;
+        delete eye1center;
         delete eye2;
-        //delete eye2center;
+        delete eye2center;
         delete mouth;
         if (this->turnleft){
             direction = rotateVector(body->center, direction, 0.01f);
@@ -300,26 +262,22 @@ struct Hami{
         delete eye2;
         //delete eye2center;
         delete mouth;
-        direction = normalizeh(direction);
-        direction = rotateVector(center, direction, 0.0009*time);
-        direction = normalizeh(direction);
-        center = pointAtTime(center, direction, time / 5000.0f);
-        direction = velocityAtTime(center, direction, time / 5000.0f);
-        direction = doth(center, direction) * center + direction;
-        direction = normalizeh(direction);
 
+            center = pointAtTime(center, direction, 0.005f);
+            center.w = sqrtf(center.x * center.x + center.y * center.y + 1.0f);
+            direction = velocityAtTime(center, direction, 0.005f);
+            //direction.w = sqrtf(center.x * direction.x + center.y * direction.y);
+            direction = doth(center,direction) * center + direction;
+            direction = normalizeh(direction);
+            direction = rotateVector(center, direction, M_PI / 330.0f);
+            //center.w = sqrtf(center.x * center.x + center.y * center.y + 1.0f);
+            //printf("%f %f %f %f\n\n", center.x, center.y, center.z, center.w);
 
-        //direction = velocityAtTime(center, center, time * 0.0000005f);
-        //direction = doth(center, direction) * center + direction;
-        //normalizeh(direction);
-        //center.w = sqrtf(center.x * center.x + center.y * center.y + 1.0f);
-        //printf("%f %f %f %f\n\n", center.x, center.y, center.z, center.w);
         goo.push_back(vec4(center.x, center.y, 0, sqrtf(center.x * center.x + center.y * center.y + 1.0f)));
         mouthSizeChange();
         create(center, R, color);
         glutPostRedisplay();
     }
-
 
     void drawGoo(){
         glBindVertexArray(vao);
@@ -328,7 +286,7 @@ struct Hami{
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, NULL);
         glUniform3f(glGetUniformLocation(gpuProgram.getId(), "color"), 1, 1, 1);
-        glLineWidth(5);
+        glLineWidth(3);
         glDrawArrays(GL_LINE_STRIP, 0, goo.size());
     }
 
@@ -357,7 +315,7 @@ Circle* PoincareDisk;
 void onInitialization() {
     glViewport(0, 0, windowWidth, windowHeight);
     hami1 = new Hami(vec2(0, 0), 0.3f, vec3(1, 0, 0));
-    hami2 = new Hami(vec2(0.6f, 0.8), 0.3f, vec3(0, 1, 0));
+    hami2 = new Hami(vec2(0.6f, 0.3f), 0.3f, vec3(0, 1, 0));
     PoincareDisk = new Circle(vec2(0, 0), 5.4f, vec3(0, 0, 0));
     // create program for the GPU
     gpuProgram.create(vertexSource, fragmentSource, "outColor");
